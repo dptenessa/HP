@@ -99,7 +99,12 @@ def refresh_SD():
         next_page_available = True
         driver.get("https://www.sancta-domenica.hr/komunikacije/mobiteli.html")
         time.sleep(4)
-        cross = driver.find_element(By.XPATH, '/html/body/div[5]/span/span')  # /html/body/div[4]/span/span
+        for n in range(9):
+            cross_address='/html/body/div['+str(n)+']/span/span'
+            try:
+                cross = driver.find_element(By.XPATH, cross_address)  # /html/body/div[4]/span/span
+            except:
+                pass
         cross.click()
         while next_page_available:
             soup = BeautifulSoup(driver.page_source, "lxml")
@@ -124,7 +129,7 @@ def refresh_SD():
                 next_page_available = False
         driver.quit()
         store_last_checkpoint(dfsd, "Sancta_Domenica")
-        dfsd.to_excel("SD.xlsx")
+        #dfsd.to_excel("SD.xlsx")
         print("SD Done")
         return dfsd
 
@@ -164,7 +169,7 @@ def refresh_A1():
                                     'MRC_total': mrc, 'Tariff Name': tariff_name, 'GB': GB_inc}, ignore_index=True)
         driver.quit()
         store_last_checkpoint(dfA1, "A1")
-        dfA1.to_excel("A1.xlsx")
+        #dfA1.to_excel("A1.xlsx")
         print("A1 Done")
         return dfA1
 
@@ -261,7 +266,7 @@ def refresh_T2():
                 next_page_available = False
         driver.quit()
         store_last_checkpoint(dfT2, "T2")
-        dfT2.to_excel("T2.xlsx")
+        #dfT2.to_excel("T2.xlsx")
         print()
         print("T2 Done")
         return dfT2
