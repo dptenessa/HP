@@ -63,7 +63,7 @@ def update_map(df, map):
                 if not success and lista != Memories:
                     question = "I need help guessing the " + fields[i] + " of the model above. Input it here please -> "
                     print(web_label, n)
-                    row[fields[i]] = input(question)
+                    row[fields[i]] = input(question).upper()
     fusion.sort_values(by=['Manufacturer', 'Model', 'Memory', 'Web Model'], inplace=True)
     fusion.drop_duplicates(subset=['Manufacturer', 'Model', 'Memory', 'Web Model'], inplace=True)
     with pd.ExcelWriter("map.xlsx") as file:  # doctest: +SKIP
@@ -144,7 +144,7 @@ def refresh_A1():
     today_day, today_month, today_year = get_date()
     day, month, year = load_Co_log("A1")
     if day == today_day and month == today_month and year == today_year:
-        print("A1 already uodated today")
+        print("A1 already updated today")
     else:
         driver = webdriver.Chrome()
         driver.get("https://www.a1.hr/webshop/mobiteli-na-pretplatu#show=85")
@@ -195,7 +195,7 @@ def refresh_T2():
     today_day, today_month, today_year = get_date()
     day, month, year = load_Co_log("T2")
     if day == today_day and month == today_month and year == today_year:
-        print("Tele2 already uodated today")
+        print("Tele2 already updated today")
     else:
         driver = webdriver.Chrome()
         next_page_available = True
