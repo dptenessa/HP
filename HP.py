@@ -4,6 +4,7 @@ from selenium.webdriver.support.ui import Select
 from selenium.webdriver.common.by import By
 # from selenium.webdriver.support.ui import WebDriverWait
 # from selenium.webdriver.support import expected_conditions as EC
+import sys
 import os
 import pandas as pd
 import time
@@ -29,14 +30,54 @@ def prepare_lists(lista):
         lista.remove("INFONA")
     except:
         pass
-    lista = sorted(lista, key=len)
-    lista = lista[::-1]
+    lista = sorted(lista, key=len, reverse=True)
     return lista
 
+
 def update_map(df, map):
+    df['Web Model'] = df['Web Model'].astype(str)
+    map['Model'] = map['Model'].astype(str)
+    Manufacturers = [x.upper() for x in list(map['Manufacturer'].drop_duplicates(keep='first'))]
+    Models = [x.upper() for x in list(map['Model'].drop_duplicates(keep='first'))]
+    Memories = [x.upper() for x in list(map['Memory'].drop_duplicates(keep='first'))]
+    Manufacturers, Models, Memories = prepare_lists(Manufacturers), prepare_lists(Models), prepare_lists(Memories)
+    lists = [Manufacturers, Models, Memories]
+    fields = ["Manufacturer", "Model", "Memory"]
+    web_labels = df[['Web Model']]
+    fresh_web_labels = pd.merge(web_labels, map, on=['Web Model'], how='left')
+    fresh_web_labels = fresh_web_labels.loc[fresh_web_labels["Model"].isnull()].copy()
+    fresh_web_labels.drop_duplicates(subset=['Manufacturer', 'Model', 'Memory', 'Web Model'], inplace=True)
+    for n, row in fresh_web_labels.iterrows():
+        web_label_u = str(row['Web Model']).upper()
+        web_label = web_label_u.replace(" ", "")
+        web_label = web_label.replace("-", "")
+        for i, lista in enumerate(lists):
+            success = False
+            for element in lista:
+                to_be_found = element.upper().replace(" ", "")
+                if to_be_found.isdecimal():
+                    pass
+                else:
+                    if to_be_found in web_label and not success:
+                        row[fields[i]] = element
+                        success = True
+            if not success and lista != Memories:
+                question = "I need help guessing the " + fields[i].upper() + " of the model above. Input it here please -> "
+                print(web_label_u) #, n)
+                row[fields[i]] = input(question).upper()
+    fresh_web_labels.sort_values(by=['Manufacturer', 'Model', 'Memory', 'Web Model'], inplace=True)
+    fresh_web_labels.drop_duplicates(subset=['Manufacturer', 'Model', 'Memory', 'Web Model'], inplace=True)
+    fresh_web_labels.fillna("INFONA", inplace=True)
+    result=pd.concat([map,fresh_web_labels])
+    with pd.ExcelWriter("map.xlsx") as file:  # doctest: +SKIP
+        result.to_excel(file, sheet_name='map', index=False)
+    return result
+
+
+def update_map_o(df, map):
+    df['Web Model'] = df['Web Model'].astype(str)
     map.fillna("INFONA", inplace=True)
     map['Model'] = map['Model'].astype(str)
-    df['Web Model'] = df['Web Model'].astype(str)
     Manufacturers = [x.upper() for x in list(map['Manufacturer'].drop_duplicates(keep='first'))]
     Models = [x.upper() for x in list(map['Model'].drop_duplicates(keep='first'))]
     Memories = [x.upper() for x in list(map['Memory'].drop_duplicates(keep='first'))]
@@ -50,12 +91,12 @@ def update_map(df, map):
         web_label = str(row['Web Model'])
         long_model = web_label.replace(" ", "")
         long_model = long_model.replace("-", "")
-        cadena = long_model.lower()
+        cadena = long_model.upper()
         for i, lista in enumerate(lists):
             success = False
             if row[fields[i]] == "INFONA":
                 for element in lista:
-                    to_be_found = element.lower().replace(" ", "")
+                    to_be_found = element.upper().replace(" ", "")
                     to_be_found = to_be_found.replace(" ", "")
                     if to_be_found in cadena and not success:
                         row[fields[i]] = element
@@ -81,11 +122,16 @@ def numerize(decimal_text):
     return answer
 
 
-def clickea(driver,Xpath):
-    time.sleep(1)
-    web_element = driver.find_element(By.XPATH, Xpath)
+def clickea(driver, Xpath):
+    tries = 0
+    while tries < 10:
+        try:
+            web_element = driver.find_element(By.XPATH, Xpath)
+            tries = 10
+        except:
+            time.sleep(1)
+            tries += 1
     web_element.click()
-    time.sleep(1)
 
 
 def refresh_SD():
@@ -345,7 +391,7 @@ def recommend_prices(model_list, df, GB_ranges):
                         & (df['Company'] == "A1") & (df['GB'] > 0) & (df['GB'] < FLAT)].copy()
         A1_is_selling=False
         if len(subset) > 0:
-            A1_is_selling=True
+            #A1_is_selling=True
             X_raw, y = np.array(subset['GB']).reshape(-1, 1), np.array(subset['Final HS price']).reshape(-1, 1)
             X = poly.fit_transform(X_raw)
             X2_raw, y2 = np.array(subset['GB']).reshape(-1, 1), np.array(subset['MRC_total']).reshape(-1, 1)
@@ -359,9 +405,9 @@ def recommend_prices(model_list, df, GB_ranges):
                                   & (df['Company'] == "A1") & (df['GB'] == FLAT)].copy()
 
             GB_ranges_to_explore = GB_ranges.loc[(GB_ranges['Tariff Name'] != "PRP")]
-        for indice, fila in GB_ranges_to_explore.iterrows():
-            MRC = fila['Current MRC']
-            if A1_is_selling:
+            for indice, fila in GB_ranges_to_explore.iterrows():
+                MRC = fila['Current MRC']
+                #if A1_is_selling:
                 intGB_raw = np.array(int(fila.GB)).reshape(1, -1)
                 intGB = poly.fit_transform(intGB_raw)
                 if intGB_raw == FLAT:
@@ -454,6 +500,7 @@ def Rogue_two_output():
     dff.drop_duplicates(subset=["Company","Web Model","Upfront", "Installment", "MRC_total", "Tariff Name",
                                 "GB","Final HS price"], keep='last', inplace=True)
     updated_map = update_map(dff, df_map)
+    print('Building recommendations...')
     df_all = pd.merge(dff, updated_map, on=['Web Model'], how='left')
     df_all.sort_values(by=['Company', 'Manufacturer', 'Model', 'Memory', 'Tariff Name','GB','Final HS price'], inplace=True)
     df_all.drop_duplicates(subset=['Company', 'Manufacturer', 'Model', 'Memory', 'Tariff Name','GB'], keep="last",
