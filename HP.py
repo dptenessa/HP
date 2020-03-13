@@ -128,10 +128,14 @@ def clickea(driver, Xpath):
         try:
             web_element = driver.find_element(By.XPATH, Xpath)
             tries = 10
+            print("found " + Xpath)
+            web_element.click()
+            time.sleep(2)
         except:
-            time.sleep(1)
+            time.sleep(2)
             tries += 1
-    web_element.click()
+            print("failed" + str(tries) + Xpath)
+
 
 
 def refresh_SD():
@@ -175,7 +179,7 @@ def refresh_SD():
                 next_page_available = False
         driver.quit()
         store_last_checkpoint(dfsd, "Sancta_Domenica")
-        #dfsd.to_excel("SD.xlsx")
+        dfsd.to_excel("SD.xlsx")
         print("SD Done")
         return dfsd
 
@@ -215,18 +219,66 @@ def refresh_A1():
                                     'MRC_total': mrc, 'Tariff Name': tariff_name, 'GB': GB_inc}, ignore_index=True)
         driver.quit()
         store_last_checkpoint(dfA1, "A1")
-        #dfA1.to_excel("A1.xlsx")
+        dfA1.to_excel("A1.xlsx")
         print("A1 Done")
         return dfA1
 
 def refresh_T2():
+    dfT2 = pd.DataFrame(
+        columns=['Company', 'Web Model', 'Upfront', 'Installment', 'Final HS price', 'MRC_total', 'Tariff Name', 'GB'])
+    GB_included = {"RASPALI": 999999,
+                   "ČISTO TRISTO": 10}
+    MNP_MRCs = {"RASPALI": 85+84,
+                "ČISTO TRISTO": 55+74}
+    today_day, today_month, today_year = get_date()
+    day, month, year = 1,1,1 # load_Co_log("A1")
+    if day == today_day and month == today_month and year == today_year:
+        print("T2 already updated today")
+    else:
+        driver = webdriver.Chrome()
+        tariffs_id = [66,65] #RASPALI UNLIMITED & CISTO TRISTO 10GB
+        for tariff in tariffs_id:
+            url = "https://www.tele2.hr/privatni-korisnici/mobiteli/uz-pretplatu/?trfid="+str(tariff)
+            driver.get(url)
+            time.sleep(1)
+            for times in range(7):
+                driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                time.sleep(1)
+            time.sleep(3)
+            soup = BeautifulSoup(driver.page_source, "lxml")
+            all_divs = soup.findAll("article", {"class": "t2-product-list-item"})
+            for item in all_divs:
+                rows = item.findAll("tr")
+                model = (item.find("h2", "text-center").get_text())
+                tariff_name = rows[1].find("span").get_text()
+                installments = rows[3].find("div")
+                try:
+                    installment = numerize(installments.find("div", "t2-installment-discount-color").get_text())
+                except:
+                    installment = numerize(installments.get_text())
+                #installment = min(installment1, installment2)
+                upfront = numerize(rows[4].get_text())
+                total_HS_price = upfront + 24 * installment
+                mrc = MNP_MRCs[tariff_name]  # numerize(item.find("p", "Product-priceTariff").get_text())
+                GB_inc = GB_included[tariff_name]
+                dfT2 = dfT2.append({'Company': 'T2', 'Web Model': model, 'Upfront': upfront, 'Installment': installment,
+                                    'Final HS price': total_HS_price,
+                                    'MRC_total': mrc, 'Tariff Name': tariff_name, 'GB': GB_inc}, ignore_index=True)
+        driver.quit()
+        store_last_checkpoint(dfT2, "T2")
+        dfT2.to_excel("T2.xlsx")
+        print("T2 Done")
+        return dfT2
+
+
+def refresh_T2_old():
     dfT2 = pd.DataFrame(columns=['Company', 'Web Model', 'Upfront', 'Installment', 'Final HS price', 'MRC_total', 'Tariff Name','GB'])
     paginas, count = 0, 0
-    menus = ['//*[@id="tariffsSummaryRow"]/table/tbody/tr/td[2]/p/span',
+    menus = ['//*[@id="tariffsSummaryRow"]/table/tbody/tr/td[2]/p/span',  #//*[@id="tariffsSummaryRow"]/table/tbody/tr/td[2]/p/span
              '//*[@id="dataPackagesSummaryRow"]/table/tbody/tr/td[2]/p/span',
              '//*[@id="bindPeriodsSummaryRow"]/table/tbody/tr/td[2]/p']  # Tariffs, GBs, MCDs
-    tariffs = ['//*[@id="frmData"]/div[4]/main/section/div[1]/section[2]/div[2]/div[2]/div[2]/div[1]/div[2]/p',
-               '//*[@id="frmData"]/div[4]/main/section/div[1]/section[2]/div[2]/div[2]/div[2]/div[3]/div[2]/p']  # Raspali, Cisto Tristo
+    tariffs = ['//*[@id="frmData"]/div[4]/main/section/div[1]/section[2]/div[2]/div[5]/div[2]/div[1]/div[2]/p', #//*[@id="frmData"]/div[4]/main/section/div[1]/section[2]/div[2]/div[2]/div[2]/div[1]/div[2]/p'
+               '//*[@id="frmData"]/div[4]/main/section/div[1]/section[2]/div[2]/div[5]/div[2]/div[3]/div[2]/p'] #//*[@id="frmData"]/div[4]/main/section/div[1]/section[2]/div[2]/div[2]/div[2]/div[3]/div[2]/p'  #   Raspali, Cisto Tristo
     GBs = ['//*[@id="frmData"]/div[4]/main/section/div[1]/section[2]/div[2]/div[3]/div[2]/div[4]/div[2]/p',
            '//*[@id="frmData"]/div[4]/main/section/div[1]/section[2]/div[2]/div[3]/div[2]/div[3]/div[2]/p',
            '//*[@id="frmData"]/div[4]/main/section/div[1]/section[2]/div[2]/div[3]/div[2]/div[2]/div[2]/p',
@@ -239,80 +291,80 @@ def refresh_T2():
                    "DESET GB": 10,
                    "BEZBROJ GB": 999999}
     today_day, today_month, today_year = get_date()
-    day, month, year = load_Co_log("T2")
+    day, month, year = 1,2,3 #load_Co_log("T2")
     if day == today_day and month == today_month and year == today_year:
         print("Tele2 already updated today")
     else:
         driver = webdriver.Chrome()
         next_page_available = True
         driver.get("https://www.tele2.hr/privatni-korisnici/mobiteli/uz-pretplatu/")
-        while next_page_available:
-            get_rid_of_EU_glupost(driver)
-            phones_in_page = driver.find_elements_by_class_name("t2-device-col-var-img")
-            for n, phone in enumerate(phones_in_page):
+        #while next_page_available:
+        get_rid_of_EU_glupost(driver)
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(1)
+        phones_in_page = driver.find_elements_by_class_name("t2-device-col-var-img")
+        for n, phone in enumerate(phones_in_page):
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            refreshed_phones_in_page = driver.find_elements_by_class_name("t2-device-col-var-img")
+            time.sleep(1)
+            try:
+                refreshed_phones_in_page[n].click()
+            except:
+                driver.get("https://www.tele2.hr/privatni-korisnici/mobiteli/uz-pretplatu/")
                 driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
                 refreshed_phones_in_page = driver.find_elements_by_class_name("t2-device-col-var-img")
-                time.sleep(1)
+                refreshed_phones_in_page[n].click()
+            # collecting info from detailed page
+            # for MCD in range(len(MCDs)):
+            #     menuclick = True
+            #     driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            clickea(driver, menus[0])
+            for tariff in range(len(tariffs)):
+                clickea(driver, tariffs[tariff])
+            # for GB in range(len(GBs)):
+            #     if tariff == 1 and GB == 3:
+            #         pass
+            #     else:
+            # clickea(driver, menuclick, menus[1], GBs[GB])
+                modelo = driver.find_element(By.XPATH, '//*[@id="deviceListSummary"]/table/tbody/tr/td[3]/p').text
+                upfront = numerize(driver.find_element(By.XPATH, '//*[@id="summarySpecsMainContainer"]/table/tbody/tr/td[3]/span[1]').text)
+                installment = numerize(driver.find_element(By.XPATH, '//*[@id="deviceListSummary"]/table/tbody/tr/td[4]/span[1]').text)
+                mrc1 = numerize(driver.find_element(By.XPATH, '//*[@id="tariffsSummaryRow"]/table/tbody/tr/td[3]/span[1]').text)
+                mrc2 = numerize(driver.find_element(By.XPATH, '//*[@id="dataPackagesSummaryRow"]/table/tbody/tr/td[3]/span[1]').text)
+                mrc = mrc1+mrc2
                 try:
-                    refreshed_phones_in_page[n].click()
+                    web_discount = numerize(driver.find_element(By.XPATH,'//*[@id="posSavingsMainContainer"]/table/tbody/tr/td[3]/span[1]').text)
                 except:
-                    driver.get("https://www.tele2.hr/privatni-korisnici/mobiteli/uz-pretplatu/")
-                    for veces in range(paginas):
-                        next_page = driver.find_element_by_partial_link_text("Sljede")
-                        next_page.click()
-                    refreshed_phones_in_page = driver.find_elements_by_class_name("t2-device-col-var-img")
-                    refreshed_phones_in_page[n].click()
-                # collecting info from detailed page
-                # for MCD in range(len(MCDs)):
-                #     menuclick = True
-                #     driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                clickea(driver, menus[0])
-                for tariff in range(len(tariffs)):
-                    clickea(driver, tariffs[tariff])
-                # for GB in range(len(GBs)):
-                #     if tariff == 1 and GB == 3:
-                #         pass
-                #     else:
-                # clickea(driver, menuclick, menus[1], GBs[GB])
-                    modelo = driver.find_element(By.XPATH, '//*[@id="deviceListSummary"]/table/tbody/tr/td[2]/p').text
-                    upfront = numerize(driver.find_element(By.XPATH, '//*[@id="summarySpecsMainContainer"]/table/tbody/tr/td[3]/span[1]').text)
-                    installment = numerize(driver.find_element(By.XPATH, '//*[@id="deviceListSummary"]/table/tbody/tr/td[3]/span[1]').text)
-                    mrc1 = numerize(driver.find_element(By.XPATH, '//*[@id="tariffsSummaryRow"]/table/tbody/tr/td[3]/span[1]').text)
-                    mrc2 = numerize(driver.find_element(By.XPATH, '//*[@id="dataPackagesSummaryRow"]/table/tbody/tr/td[3]/span[1]').text)
-                    mrc = mrc1+mrc2
-                    try:
-                        web_discount = numerize(driver.find_element(By.XPATH,'//*[@id="posSavingsMainContainer"]/table/tbody/tr/td[3]/span[1]').text)
-                    except:
-                        web_discount = 0    ##### MAKE SURE IT TAKES UPFRONT AND MAKE SURE IT TAKES THIS PRICE INSTEAD OF INSTALLEMENT IF AVAILABLE AND HARD CODE A1
-                    tariff_name = driver.find_element(By.XPATH, '//*[@id="tariffsSummaryRow"]/table/tbody/tr/td[2]/p/span').text
-                    GB_web_name = driver.find_element(By.XPATH, '//*[@id="dataPackagesSummaryRow"]/table/tbody/tr/td[2]/p/span').text
-                    GB_inc = GB_included[GB_web_name]
-                    total_HS_price = upfront + 24 * installment + web_discount
-                    ## Back.engeneering to make numbers match (considering irrelevant upfront and installment)
-                    installment = total_HS_price/24
-                    upfront = 0
-                    dfT2 = dfT2.append(
-                        {'Company': 'Tele2', 'Web Model': modelo, 'Upfront': upfront,'Installment': installment,
-                         'Final HS price': total_HS_price,
-                         'MRC_total': mrc,
-                         'Tariff Name': tariff_name,'GB': GB_inc},
-                        ignore_index=True)  # ,"Contract_type": contract_type,'Movement':movement_name
-                print(".", end='')
-                count += 1
-                print(count, end='')
-                driver.execute_script("window.history.go(-1)")
-                get_rid_of_EU_glupost(driver)
-                time.sleep(1)
-            try:
-                driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-                next_page = driver.find_element_by_partial_link_text("Sljede")
-                next_page.click()
-                paginas += 1
-            except:
-                next_page_available = False
+                    web_discount = 0    ##### MAKE SURE IT TAKES UPFRONT AND MAKE SURE IT TAKES THIS PRICE INSTEAD OF INSTALLEMENT IF AVAILABLE AND HARD CODE A1
+                tariff_name = driver.find_element(By.XPATH, '//*[@id="tariffsSummaryRow"]/table/tbody/tr/td[2]/p/span').text
+                GB_web_name = driver.find_element(By.XPATH, '//*[@id="dataPackagesSummaryRow"]/table/tbody/tr/td[2]/p/span').text
+                GB_inc = GB_included[GB_web_name]
+                total_HS_price = upfront + 24 * installment + web_discount
+                ## Back.engeneering to make numbers match (considering irrelevant upfront and installment)
+                installment = total_HS_price/24
+                upfront = 0
+                dfT2 = dfT2.append(
+                    {'Company': 'Tele2', 'Web Model': modelo, 'Upfront': upfront,'Installment': installment,
+                     'Final HS price': total_HS_price,
+                     'MRC_total': mrc,
+                     'Tariff Name': tariff_name,'GB': GB_inc},
+                    ignore_index=True)  # ,"Contract_type": contract_type,'Movement':movement_name
+            print(".", end='')
+            count += 1
+            print(count, end='')
+            driver.execute_script("window.history.go(-1)")
+            get_rid_of_EU_glupost(driver)
+            time.sleep(1)
+            # try:
+            #     driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            #     next_page = driver.find_element_by_partial_link_text("Sljede")
+            #     next_page.click()
+            #     paginas += 1
+            # except:
+            #     next_page_available = False
         driver.quit()
         store_last_checkpoint(dfT2, "T2")
-        #dfT2.to_excel("T2.xlsx")
+        dfT2.to_excel("T2.xlsx")
         print()
         print("T2 Done")
         return dfT2
