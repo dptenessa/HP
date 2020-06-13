@@ -16,6 +16,7 @@ from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import PolynomialFeatures
 import numpy as np
 import datetime
+import Graphiti
 
 
 def get_rid_of_EU_glupost(driver):
@@ -24,6 +25,7 @@ def get_rid_of_EU_glupost(driver):
         EU_reqs_approval.click()
     except:
         pass
+
 
 def prepare_lists(lista):
     try:
@@ -63,12 +65,12 @@ def update_map(df, map):
                         success = True
             if not success and lista != Memories:
                 question = "I need help guessing the " + fields[i].upper() + " of the model above. Input it here please -> "
-                print(web_label_u) #, n)
+                print(web_label_u)  # , n)
                 row[fields[i]] = input(question).upper()
     fresh_web_labels.sort_values(by=['Manufacturer', 'Model', 'Memory', 'Web Model'], inplace=True)
     fresh_web_labels.drop_duplicates(subset=['Manufacturer', 'Model', 'Memory', 'Web Model'], inplace=True)
     fresh_web_labels.fillna("INFONA", inplace=True)
-    result=pd.concat([map,fresh_web_labels])
+    result = pd.concat([map, fresh_web_labels])
     with pd.ExcelWriter("map.xlsx") as file:  # doctest: +SKIP
         result.to_excel(file, sheet_name='map', index=False)
     return result
@@ -137,10 +139,27 @@ def clickea(driver, Xpath):
             print("failed" + str(tries) + Xpath)
 
 
+def click_SD_cross(driver):
+    found = False
+    for n in range(9):
+        cross_address = '/html/body/div[' + str(n) + ']/span/span'
+        try:
+            cross = driver.find_element(By.XPATH, cross_address)  # /html/body/div[4]/span/span
+            found = True
+        except:
+            time.sleep(1)
+    if found:
+        cross.click()
+        return True
+    else:
+        return False
+
 
 def refresh_SD():
-    dfsd = pd.DataFrame(columns=['Company', 'Web Model', 'Upfront', 'Installment', 'Final HS price', 'MRC_total', 'Tariff Name','GB'])
-    today_day, today_month, today_year = get_date()
+    dfsd = pd.DataFrame(
+        columns=['Company', 'Web Model', 'Upfront', 'Installment', 'Final HS price', 'MRC_total', 'Tariff Name', 'GB', 'Day', 'Month',
+                 'Year', 'Weeknum'])
+    today_day, today_month, today_year, Weeknum = get_date()
     day, month, year = load_Co_log("Sancta_Domenica")
     if day == today_day and month == today_month and year == today_year:
         print("Sancta Domenica already updated today")
@@ -149,14 +168,8 @@ def refresh_SD():
         next_page_available = True
         driver.get("https://www.sancta-domenica.hr/komunikacije/mobiteli.html")
         time.sleep(4)
-        for n in range(9):
-            cross_address='/html/body/div['+str(n)+']/span/span'
-            try:
-                cross = driver.find_element(By.XPATH, cross_address)  # /html/body/div[4]/span/span
-            except:
-                pass
-        cross.click()
         while next_page_available:
+            click_SD_cross(driver)
             soup = BeautifulSoup(driver.page_source, "lxml")
             all_divs = soup.findAll("div", "product-item-info")
             for item in all_divs:
@@ -167,7 +180,9 @@ def refresh_SD():
                     prices.append(numerize(all_prices[n].get_text()))
                 price = min(prices)
                 dfsd = dfsd.append({'Company': 'Sancta Domenica', 'Web Model': model, 'Upfront': price, 'Installment': 0,
-                                    'Final HS price': price, 'MRC_total': 0, 'Tariff Name': 'SD', 'GB': 0},
+                                    'Final HS price': price, 'MRC_total': 0, 'Tariff Name': 'SD', 'GB': 0, "Day": today_day,
+                                    "Month": today_month,
+                                    "Year": today_year, "Weeknum": Weeknum},
                                    ignore_index=True)
             time.sleep(1)
             driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
@@ -176,22 +191,24 @@ def refresh_SD():
                 next_page = driver.find_element_by_partial_link_text('Nastavi')
                 next_page.click()
             except:
-                next_page_available = False
+                next_page_available = click_SD_cross(driver)
         driver.quit()
         store_last_checkpoint(dfsd, "Sancta_Domenica")
-        dfsd.to_excel("SD.xlsx")
+        dfsd.to_excel("SD.xlsx", index=False)
         print("SD Done")
         return dfsd
 
+
 def refresh_A1():
-    dfA1 = pd.DataFrame(columns=['Company', 'Web Model', 'Upfront', 'Installment', 'Final HS price', 'MRC_total', 'Tariff Name','GB'])
-    GB_included = {"Mobilna S+": 2,
-                   "Mobilna M": 10,
-                   "Mobilna L": 999999}
+    dfA1 = pd.DataFrame(columns=['Company', 'Web Model', 'Upfront', 'Installment', 'Final HS price', 'MRC_total', 'Tariff Name', 'GB',
+                                 'Day', 'Month', 'Year', 'Weeknum'])
+    GB_included = {"Mobilna S+": 3,
+                   "Mobilna M": 15,
+                   "Mobilna L": 30}  # 999999
     MNP_MRCs = {"Mobilna S+": 119,
                 "Mobilna M": 159,
                 "Mobilna L": 239}
-    today_day, today_month, today_year = get_date()
+    today_day, today_month, today_year, Weeknum = get_date()
     day, month, year = load_Co_log("A1")
     if day == today_day and month == today_month and year == today_year:
         print("A1 already updated today")
@@ -216,29 +233,37 @@ def refresh_A1():
                 GB_inc = GB_included[tariff_name]
                 dfA1 = dfA1.append({'Company': 'A1', 'Web Model': model, 'Upfront': upfront, 'Installment': installment,
                                     'Final HS price': total_HS_price,
-                                    'MRC_total': mrc, 'Tariff Name': tariff_name, 'GB': GB_inc}, ignore_index=True)
+                                    'MRC_total': mrc, 'Tariff Name': tariff_name, 'GB': GB_inc, "Day": today_day, "Month": today_month,
+                                    "Year": today_year, "Weeknum": Weeknum}, ignore_index=True)
+                if tariff_name == "Mobilna M":
+                    dfA1 = dfA1.append({'Company': 'A1', 'Web Model': model, 'Upfront': upfront, 'Installment': installment,
+                                        'Final HS price': total_HS_price,
+                                        'MRC_total': 199, 'Tariff Name': tariff_name + "_flat", 'GB': GB_inc, "Day": today_day,
+                                        "Month": today_month, "Year": today_year, "Weeknum": Weeknum}, ignore_index=True)
         driver.quit()
         store_last_checkpoint(dfA1, "A1")
-        dfA1.to_excel("A1.xlsx")
+        dfA1.to_excel("A1.xlsx", index=False)
         print("A1 Done")
         return dfA1
 
+
 def refresh_T2():
     dfT2 = pd.DataFrame(
-        columns=['Company', 'Web Model', 'Upfront', 'Installment', 'Final HS price', 'MRC_total', 'Tariff Name', 'GB'])
+        columns=['Company', 'Web Model', 'Upfront', 'Installment', 'Final HS price', 'MRC_total', 'Tariff Name', 'GB', 'Day', 'Month',
+                 'Year', 'Weeknum'])
     GB_included = {"RASPALI": 999999,
                    "ČISTO TRISTO": 10}
-    MNP_MRCs = {"RASPALI": 85+84,
-                "ČISTO TRISTO": 55+74}
-    today_day, today_month, today_year = get_date()
-    day, month, year = 1,1,1 # load_Co_log("A1")
+    MNP_MRCs = {"RASPALI": 85 + 84,
+                "ČISTO TRISTO": 55 + 74}
+    today_day, today_month, today_year, Weeknum = get_date()
+    day, month, year = load_Co_log("T2")
     if day == today_day and month == today_month and year == today_year:
         print("T2 already updated today")
     else:
         driver = webdriver.Chrome()
-        tariffs_id = [66,65] #RASPALI UNLIMITED & CISTO TRISTO 10GB
+        tariffs_id = [66, 65]  # RASPALI UNLIMITED & CISTO TRISTO 10GB
         for tariff in tariffs_id:
-            url = "https://www.tele2.hr/privatni-korisnici/mobiteli/uz-pretplatu/?trfid="+str(tariff)
+            url = "https://www.tele2.hr/privatni-korisnici/mobiteli/uz-pretplatu/?trfid=" + str(tariff)
             driver.get(url)
             time.sleep(1)
             for times in range(7):
@@ -256,29 +281,31 @@ def refresh_T2():
                     installment = numerize(installments.find("div", "t2-installment-discount-color").get_text())
                 except:
                     installment = numerize(installments.get_text())
-                #installment = min(installment1, installment2)
+                # installment = min(installment1, installment2)
                 upfront = numerize(rows[4].get_text())
                 total_HS_price = upfront + 24 * installment
                 mrc = MNP_MRCs[tariff_name]  # numerize(item.find("p", "Product-priceTariff").get_text())
                 GB_inc = GB_included[tariff_name]
                 dfT2 = dfT2.append({'Company': 'T2', 'Web Model': model, 'Upfront': upfront, 'Installment': installment,
                                     'Final HS price': total_HS_price,
-                                    'MRC_total': mrc, 'Tariff Name': tariff_name, 'GB': GB_inc}, ignore_index=True)
+                                    'MRC_total': mrc, 'Tariff Name': tariff_name, 'GB': GB_inc, "Day": today_day, "Month": today_month,
+                                    "Year": today_year, "Weeknum": Weeknum}, ignore_index=True)
         driver.quit()
         store_last_checkpoint(dfT2, "T2")
-        dfT2.to_excel("T2.xlsx")
+        dfT2.to_excel("T2.xlsx", index=False)
         print("T2 Done")
         return dfT2
 
 
 def refresh_T2_old():
-    dfT2 = pd.DataFrame(columns=['Company', 'Web Model', 'Upfront', 'Installment', 'Final HS price', 'MRC_total', 'Tariff Name','GB'])
+    dfT2 = pd.DataFrame(columns=['Company', 'Web Model', 'Upfront', 'Installment', 'Final HS price', 'MRC_total', 'Tariff Name', 'GB'])
     paginas, count = 0, 0
-    menus = ['//*[@id="tariffsSummaryRow"]/table/tbody/tr/td[2]/p/span',  #//*[@id="tariffsSummaryRow"]/table/tbody/tr/td[2]/p/span
+    menus = ['//*[@id="tariffsSummaryRow"]/table/tbody/tr/td[2]/p/span',  # //*[@id="tariffsSummaryRow"]/table/tbody/tr/td[2]/p/span
              '//*[@id="dataPackagesSummaryRow"]/table/tbody/tr/td[2]/p/span',
              '//*[@id="bindPeriodsSummaryRow"]/table/tbody/tr/td[2]/p']  # Tariffs, GBs, MCDs
-    tariffs = ['//*[@id="frmData"]/div[4]/main/section/div[1]/section[2]/div[2]/div[5]/div[2]/div[1]/div[2]/p', #//*[@id="frmData"]/div[4]/main/section/div[1]/section[2]/div[2]/div[2]/div[2]/div[1]/div[2]/p'
-               '//*[@id="frmData"]/div[4]/main/section/div[1]/section[2]/div[2]/div[5]/div[2]/div[3]/div[2]/p'] #//*[@id="frmData"]/div[4]/main/section/div[1]/section[2]/div[2]/div[2]/div[2]/div[3]/div[2]/p'  #   Raspali, Cisto Tristo
+    tariffs = ['//*[@id="frmData"]/div[4]/main/section/div[1]/section[2]/div[2]/div[5]/div[2]/div[1]/div[2]/p',
+               # //*[@id="frmData"]/div[4]/main/section/div[1]/section[2]/div[2]/div[2]/div[2]/div[1]/div[2]/p'
+               '//*[@id="frmData"]/div[4]/main/section/div[1]/section[2]/div[2]/div[5]/div[2]/div[3]/div[2]/p']  # //*[@id="frmData"]/div[4]/main/section/div[1]/section[2]/div[2]/div[2]/div[2]/div[3]/div[2]/p'  #   Raspali, Cisto Tristo
     GBs = ['//*[@id="frmData"]/div[4]/main/section/div[1]/section[2]/div[2]/div[3]/div[2]/div[4]/div[2]/p',
            '//*[@id="frmData"]/div[4]/main/section/div[1]/section[2]/div[2]/div[3]/div[2]/div[3]/div[2]/p',
            '//*[@id="frmData"]/div[4]/main/section/div[1]/section[2]/div[2]/div[3]/div[2]/div[2]/div[2]/p',
@@ -291,14 +318,14 @@ def refresh_T2_old():
                    "DESET GB": 10,
                    "BEZBROJ GB": 999999}
     today_day, today_month, today_year = get_date()
-    day, month, year = 1,2,3 #load_Co_log("T2")
+    day, month, year = 1, 2, 3  # load_Co_log("T2")
     if day == today_day and month == today_month and year == today_year:
         print("Tele2 already updated today")
     else:
         driver = webdriver.Chrome()
         next_page_available = True
         driver.get("https://www.tele2.hr/privatni-korisnici/mobiteli/uz-pretplatu/")
-        #while next_page_available:
+        # while next_page_available:
         get_rid_of_EU_glupost(driver)
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         time.sleep(1)
@@ -321,33 +348,34 @@ def refresh_T2_old():
             clickea(driver, menus[0])
             for tariff in range(len(tariffs)):
                 clickea(driver, tariffs[tariff])
-            # for GB in range(len(GBs)):
-            #     if tariff == 1 and GB == 3:
-            #         pass
-            #     else:
-            # clickea(driver, menuclick, menus[1], GBs[GB])
+                # for GB in range(len(GBs)):
+                #     if tariff == 1 and GB == 3:
+                #         pass
+                #     else:
+                # clickea(driver, menuclick, menus[1], GBs[GB])
                 modelo = driver.find_element(By.XPATH, '//*[@id="deviceListSummary"]/table/tbody/tr/td[3]/p').text
                 upfront = numerize(driver.find_element(By.XPATH, '//*[@id="summarySpecsMainContainer"]/table/tbody/tr/td[3]/span[1]').text)
                 installment = numerize(driver.find_element(By.XPATH, '//*[@id="deviceListSummary"]/table/tbody/tr/td[4]/span[1]').text)
                 mrc1 = numerize(driver.find_element(By.XPATH, '//*[@id="tariffsSummaryRow"]/table/tbody/tr/td[3]/span[1]').text)
                 mrc2 = numerize(driver.find_element(By.XPATH, '//*[@id="dataPackagesSummaryRow"]/table/tbody/tr/td[3]/span[1]').text)
-                mrc = mrc1+mrc2
+                mrc = mrc1 + mrc2
                 try:
-                    web_discount = numerize(driver.find_element(By.XPATH,'//*[@id="posSavingsMainContainer"]/table/tbody/tr/td[3]/span[1]').text)
+                    web_discount = numerize(
+                        driver.find_element(By.XPATH, '//*[@id="posSavingsMainContainer"]/table/tbody/tr/td[3]/span[1]').text)
                 except:
-                    web_discount = 0    ##### MAKE SURE IT TAKES UPFRONT AND MAKE SURE IT TAKES THIS PRICE INSTEAD OF INSTALLEMENT IF AVAILABLE AND HARD CODE A1
+                    web_discount = 0  ##### MAKE SURE IT TAKES UPFRONT AND MAKE SURE IT TAKES THIS PRICE INSTEAD OF INSTALLEMENT IF AVAILABLE AND HARD CODE A1
                 tariff_name = driver.find_element(By.XPATH, '//*[@id="tariffsSummaryRow"]/table/tbody/tr/td[2]/p/span').text
                 GB_web_name = driver.find_element(By.XPATH, '//*[@id="dataPackagesSummaryRow"]/table/tbody/tr/td[2]/p/span').text
                 GB_inc = GB_included[GB_web_name]
                 total_HS_price = upfront + 24 * installment + web_discount
                 ## Back.engeneering to make numbers match (considering irrelevant upfront and installment)
-                installment = total_HS_price/24
+                installment = total_HS_price / 24
                 upfront = 0
                 dfT2 = dfT2.append(
-                    {'Company': 'Tele2', 'Web Model': modelo, 'Upfront': upfront,'Installment': installment,
+                    {'Company': 'Tele2', 'Web Model': modelo, 'Upfront': upfront, 'Installment': installment,
                      'Final HS price': total_HS_price,
                      'MRC_total': mrc,
-                     'Tariff Name': tariff_name,'GB': GB_inc},
+                     'Tariff Name': tariff_name, 'GB': GB_inc},
                     ignore_index=True)  # ,"Contract_type": contract_type,'Movement':movement_name
             print(".", end='')
             count += 1
@@ -375,11 +403,11 @@ def get_date():
     day = dt.day
     month = dt.month
     year = dt.year
-    return day, month, year
+    return day, month, year, dt.isocalendar()[1]  # weeknum
 
 
 def store_last_checkpoint(df, company):
-    day, month, year = get_date()
+    day, month, year, Weeknum = get_date()
     name = "./LastCheckPoint_" + company + ".pkl"
     with open(name, 'wb') as f:
         pickle.dump([day, month, year, df], f)
@@ -403,9 +431,20 @@ def load_log():
     return df
 
 
+def load_log_XL():
+    # day, month, year = get_date()
+    dfs = [1, 2, 3]
+    for i, co in enumerate(["SD", "A1", "T2"]):
+        name = co + ".xlsx"
+        with open(name, 'rb') as f:
+            dfs[i] = pd.read_excel(name)
+    df = pd.concat([dfs[0], dfs[1], dfs[2]])
+    return df
+
+
 def save_and_show_in_excel(name, df):  #### Storage
     workbook_not_saved = True
-    #path = "Recommended/" + name
+    # path = "Recommended/" + name
     while workbook_not_saved:
         try:
             with pd.ExcelWriter(name) as file:  # doctest: +SKIP
@@ -417,10 +456,10 @@ def save_and_show_in_excel(name, df):  #### Storage
             input("Please close the Recommended prices.xlsx file so changes can be saved. Then press ENTER.")
 
 
-def recommend_prices(model_list, df, GB_ranges):
+def recommend_prices_theoretical(model_list, df, GB_ranges):
     poly = PolynomialFeatures(degree=3)
     FLAT = 999999
-    DISCOUNT_HS_PREMIUM = .97
+    DISCOUNT_HS_PREMIUM = 0.97
     MRC_PREMIUM = 1.04
     df["Memory"].fillna('INFONA', inplace=True)
     df["GB"].fillna(0, inplace=True)
@@ -440,10 +479,8 @@ def recommend_prices(model_list, df, GB_ranges):
             recommended_HS_price_for_PRP = looking_for_PRP.iloc[0]["Final HS price"]
         subset = df.loc[(df['Manufacturer'] == row['Manufacturer'])
                         & (df['Model'] == row['Model']) & (df['Memory'] == row['Memory'])
-                        & (df['Company'] == "A1") & (df['GB'] > 0) & (df['GB'] < FLAT)].copy()
-        A1_is_selling=False
+                        & (df['Company'] == "A1") & (df['GB'] > 0) & (df['GB'] <= FLAT)].copy()
         if len(subset) > 0:
-            #A1_is_selling=True
             X_raw, y = np.array(subset['GB']).reshape(-1, 1), np.array(subset['Final HS price']).reshape(-1, 1)
             X = poly.fit_transform(X_raw)
             X2_raw, y2 = np.array(subset['GB']).reshape(-1, 1), np.array(subset['MRC_total']).reshape(-1, 1)
@@ -459,7 +496,6 @@ def recommend_prices(model_list, df, GB_ranges):
             GB_ranges_to_explore = GB_ranges.loc[(GB_ranges['Tariff Name'] != "PRP")]
             for indice, fila in GB_ranges_to_explore.iterrows():
                 MRC = fila['Current MRC']
-                #if A1_is_selling:
                 intGB_raw = np.array(int(fila.GB)).reshape(1, -1)
                 intGB = poly.fit_transform(intGB_raw)
                 if intGB_raw == FLAT:
@@ -468,9 +504,6 @@ def recommend_prices(model_list, df, GB_ranges):
                 else:
                     recommended_HS_price = max(int(HS_price_prediction.predict(intGB) * DISCOUNT_HS_PREMIUM), 0)
                     recommended_MRC = int(MRC_prediction.predict(intGB) * MRC_PREMIUM)
-            # else:
-            #     recommended_HS_price = 0
-            #     recommended_MRC = MRC
                 gap_HS_price = recommended_MRC - MRC
                 if gap_HS_price > 0:
                     corrected_HS_price = recommended_HS_price + gap_HS_price * 24
@@ -480,9 +513,9 @@ def recommend_prices(model_list, df, GB_ranges):
                     corrected_HS_price = min(corrected_HS_price, recommended_HS_price_for_PRP)
                 else:
                     zero_shaped = np.array(0).reshape(1, -1)
-                    zero=poly.fit_transform(zero_shaped)
-                    recommended_HS_price_for_PRP=max(int(HS_price_prediction.predict(zero) * DISCOUNT_HS_PREMIUM), 0)
-                    corrected_HS_price=recommended_HS_price_for_PRP
+                    zero = poly.fit_transform(zero_shaped)
+                    recommended_HS_price_for_PRP = max(int(HS_price_prediction.predict(zero) * DISCOUNT_HS_PREMIUM), 0)
+                    corrected_HS_price = recommended_HS_price_for_PRP
                 df_to_return = df_to_return.append({'Manufacturer': manufacturer,
                                                     'Model': model,
                                                     'Memory': memory,
@@ -500,11 +533,90 @@ def recommend_prices(model_list, df, GB_ranges):
     return df_to_return
 
 
-def recommend_prices_for_PRP(df):
+def recommend_prices(model_list, df, GB_ranges):
+    today_day, today_month, today_year, Weeknum = get_date()
+    poly = PolynomialFeatures(degree=1)  # 3
+    FLAT = 999999
+    DISCOUNT_HS_PREMIUM = 0.97
+    MRC_PREMIUM = 1.04
+    df["Memory"].fillna('INFONA', inplace=True)
+    df["GB"].fillna(0, inplace=True)
+    df.GB = df.GB.astype(int)
     df_to_return = pd.DataFrame(columns=['Manufacturer', 'Model', 'Memory',
                                          'Company', 'PRP/Mkt Price', 'Tariff Name', 'GB', 'MRC_total',
                                          'Final HS price',
-                                         'TCO', 'Ideal MRC', 'Ideal HS price', 'Ideal TCO'])
+                                         'TCO', 'Ideal MRC', 'Ideal HS price', 'Ideal TCO', 'Day', 'Month', 'Year', 'Weeknum'])
+
+    for index, row in model_list.iterrows():
+        manufacturer, model, memory = row.Manufacturer, row.Model, row.Memory
+
+        # SELECTING SAMPLE TO TRAIN MODEL
+        subset = df.loc[(df['Manufacturer'] == row['Manufacturer'])
+                        & (df['Model'] == row['Model']) & (df['Memory'] == row['Memory'])
+                        & (df['Company'] == "A1") & (df['GB'] > 0) & (df['GB'] <= FLAT)].copy()
+
+        # TRAINING THE MODELS
+        if len(subset) > 0:
+            X_raw, y = np.array(subset['MRC_total']).reshape(-1, 1), np.array(subset['Final HS price']).reshape(-1, 1)
+            X = poly.fit_transform(X_raw)
+            X2_raw, y2 = np.array(subset['GB']).reshape(-1, 1), np.array(subset['MRC_total']).reshape(-1, 1)
+            X2 = poly.fit_transform(X2_raw)
+            HS_price_prediction = LinearRegression().fit(X, y)
+            MRC_prediction = LinearRegression().fit(X2, y2)
+
+            # SETTING PRICE FOR PRP
+            PRP_MRC_shaped = np.array(72).reshape(1, -1)  # VIRTUAL MRC FOR PRP
+            PRP_MRC = poly.fit_transform(PRP_MRC_shaped)
+            PRP_in_market = df.loc[
+                (df['Manufacturer'] == row['Manufacturer']) & (df['Model'] == row['Model']) & (df['Memory'] == row['Memory'])
+                & (df['Company'] == "Sancta Domenica")]
+            if len(PRP_in_market) > 0:
+                recommended_HS_price_for_PRP = int(PRP_in_market.iloc[0]["Final HS price"])
+            else:
+                recommended_HS_price_for_PRP = int(HS_price_prediction.predict(PRP_MRC))  # XXX
+
+            # EXPLOITING THE MODEL FOR THE REST
+            GB_ranges_to_explore = GB_ranges.loc[(GB_ranges['Tariff Name'] != "PRP")]
+            for indice, fila in GB_ranges_to_explore.iterrows():
+                MRC = fila['Current MRC']
+                MRC_raw = np.array(int(MRC)).reshape(-1, 1)
+                intGB_raw = np.array(int(fila.GB)).reshape(1, -1)
+                intGB = poly.fit_transform(intGB_raw)
+                MRC_for_prediction = poly.fit_transform(MRC_raw)
+                recommended_HS_price = max(int(HS_price_prediction.predict(MRC_for_prediction) * DISCOUNT_HS_PREMIUM), 0)
+                recommended_MRC = int(MRC_prediction.predict(intGB) * MRC_PREMIUM)
+                gap_HS_price = recommended_MRC - MRC
+                if gap_HS_price > 0:
+                    corrected_HS_price = int(recommended_HS_price / DISCOUNT_HS_PREMIUM)
+                else:
+                    corrected_HS_price = int(recommended_HS_price)
+                corrected_HS_price = min(corrected_HS_price, recommended_HS_price_for_PRP)
+                df_to_return = df_to_return.append({'Manufacturer': manufacturer,
+                                                    'Model': model,
+                                                    'Memory': memory,
+                                                    'Final HS price': corrected_HS_price,
+                                                    'MRC_total': MRC,
+                                                    'Company': "T",
+                                                    'PRP/Mkt Price': recommended_HS_price_for_PRP,
+                                                    'Tariff Name': fila['Tariff Name'],
+                                                    'GB': int(fila.GB),
+                                                    'TCO': corrected_HS_price + 24 * MRC,
+                                                    'Ideal MRC': recommended_MRC,
+                                                    'Ideal HS price': recommended_HS_price,
+                                                    'Ideal TCO': recommended_MRC * 24 + recommended_HS_price,
+                                                    'Day': today_day,
+                                                    'Month': today_month,
+                                                    'Year': today_year,
+                                                    'Weeknum': Weeknum}, ignore_index=True)
+    return df_to_return
+
+
+def recommend_prices_for_PRP(df):
+    today_day, today_month, today_year, Weeknum = get_date()
+    df_to_return = pd.DataFrame(columns=['Manufacturer', 'Model', 'Memory',
+                                         'Company', 'PRP/Mkt Price', 'Tariff Name', 'GB', 'MRC_total',
+                                         'Final HS price',
+                                         'TCO', 'Ideal MRC', 'Ideal HS price', 'Ideal TCO', 'Day', 'Month', 'Year', 'Weeknum'])
 
     subset = df.loc[(df['Company'] == "Sancta Domenica")].copy()
     subset.drop_duplicates(subset=['Manufacturer', 'Model', 'Memory'], inplace=True)
@@ -522,8 +634,25 @@ def recommend_prices_for_PRP(df):
                                             'TCO': recommended_HS_price_for_PRP,
                                             'Ideal MRC': 0,
                                             'Ideal HS price': recommended_HS_price_for_PRP,
-                                            'Ideal TCO': recommended_HS_price_for_PRP}, ignore_index=True)
+                                            'Ideal TCO': recommended_HS_price_for_PRP,
+                                            'Day': today_day,
+                                            'Month': today_month,
+                                            'Year': today_year,
+                                            'Weeknum': Weeknum}, ignore_index=True)
     return df_to_return
+
+def save_history(additional_data,year,week):
+    with open('datetracker.pkl', 'rb') as f:
+        year_logged, week_logged = pickle.load(f)
+    if week_logged != week and year_logged != year:
+        history = pd.read_excel('History.xlsx')
+        full_log = pd.concat([history,additional_data])
+        full_log.to_excel("History.xlsx", sheet_name='All', index=False)
+        with open('datetracker.pkl', 'wb') as f:
+            pickle.dump([year,week], f)
+    else:
+        print("Data already logged in history")
+
 
 
 def Rogue_two_output():
@@ -533,7 +662,6 @@ def Rogue_two_output():
     print("All rights reserved.")
     df_map = pd.read_excel("map.xlsx", sheet_name="map")
     df_dashboard = pd.read_excel("Dashboard.xlsx", sheet_name="SA or FMC offers")
-    #df_modifications = df_dashboard.loc[(df_dashboard['Carrier'] != "T")].copy()
 
     while refresh not in ["y", "n"]:
         refresh = input("Refresh info from web (y/n)? ").lower()
@@ -541,33 +669,32 @@ def Rogue_two_output():
             dfa = refresh_SD()
             dfb = refresh_A1()
             dfc = refresh_T2()
+            # df0 = load_log_XL()
             dff = pd.concat([dfa, dfb, dfc])
+            # dff = pd.concat([df0, dfa, dfb, dfc])
             print("All Done!")
         if refresh == "n":
-            dff = load_log()
-    # store_last_checkpoint(dff)
+            dff = load_log_XL()
 
     dff.sort_values(by=['Company', "Web Model", "Upfront", "Installment", "MRC_total", "Tariff Name",
                         "GB", "Final HS price"], inplace=True)
-    dff.drop_duplicates(subset=["Company","Web Model","Upfront", "Installment", "MRC_total", "Tariff Name",
-                                "GB","Final HS price"], keep='last', inplace=True)
+    dff.drop_duplicates(subset=["Company", "Web Model", "Upfront", "Installment", "MRC_total", "Tariff Name",
+                                "GB", "Final HS price"], keep='last', inplace=True)
     updated_map = update_map(dff, df_map)
     print('Building recommendations...')
     df_all = pd.merge(dff, updated_map, on=['Web Model'], how='left')
-    df_all.sort_values(by=['Company', 'Manufacturer', 'Model', 'Memory', 'Tariff Name','GB','Final HS price'], inplace=True)
-    df_all.drop_duplicates(subset=['Company', 'Manufacturer', 'Model', 'Memory', 'Tariff Name','GB'], keep="last",
+    df_all.sort_values(by=['Company', 'Manufacturer', 'Model', 'Memory', 'Tariff Name', 'GB', 'Final HS price'], inplace=True)
+    df_all.drop_duplicates(subset=['Company', 'Manufacturer', 'Model', 'Memory', 'Tariff Name', 'GB'], keep="last",
                            inplace=True)
-    #df_all_modifications = pd.merge(df_all, df_modifications, on=['Tariff Name'], how='left')
-    #df_all_modifications['MRC_total'] = df_all_modifications['MRC'] + df_all_modifications['Additional Price']
     df_all['TCO'] = df_all['Final HS price'] + df_all['MRC_total'] * 24
-    df_all['Ideal MRC'], df_all['Ideal HS price'], df_all['Ideal TCO'],df_all['PRP/Mkt Price'] = [0, 0, 0, 0]
+    df_all['Ideal MRC'], df_all['Ideal HS price'], df_all['Ideal TCO'], df_all['PRP/Mkt Price'] = [0, 0, 0, 0]
     df_all.sort_values(
-        by=['Manufacturer', 'Model', 'Memory', 'TCO', 'Final HS price', 'Company', 'Tariff Name', 'GB','MRC_total'],
+        by=['Manufacturer', 'Model', 'Memory', 'TCO', 'Final HS price', 'Company', 'Tariff Name', 'GB', 'MRC_total'],
         inplace=True)
     df_final = df_all[['Manufacturer', 'Model', 'Memory',
-                                     'Company', 'PRP/Mkt Price', 'Tariff Name', 'GB', 'MRC_total',
-                                     'Final HS price',
-                                     'TCO', 'Ideal MRC', 'Ideal HS price', 'Ideal TCO']]
+                       'Company', 'PRP/Mkt Price', 'Tariff Name', 'GB', 'MRC_total',
+                       'Final HS price',
+                       'TCO', 'Ideal MRC', 'Ideal HS price', 'Ideal TCO', 'Day', 'Month', 'Year', 'Weeknum']]
 
     ###RECOMMENDING
     model_list = df_final.copy()
@@ -578,12 +705,14 @@ def Rogue_two_output():
     df_recommended_prices = recommend_prices(model_list, df_all, GB_ranges)
     df_prices_PRP = recommend_prices_for_PRP(df_all)
     df_concat = pd.concat([df_final, df_recommended_prices, df_prices_PRP])
-    df_concat.drop_duplicates(subset=["Manufacturer","Model","Memory","Tariff Name","GB"], keep='first', inplace=True)
+    df_concat.drop_duplicates(subset=["Manufacturer", "Model", "Memory", "Tariff Name", "GB"], keep='first', inplace=True)
     return df_concat
 
 
 if __name__ == '__main__':
     output = Rogue_two_output()
-    #day, month, year = get_date()
-    file_name = 'Recommended prices.xlsx' #_'+str(year)+str(month)+str(day)+'.xlsx'
+    day, month, year, Weeknum = get_date()
+    save_history(output,year,Weeknum)
+    file_name = 'Recommended prices.xlsx'  # _'+str(year)+str(month)+str(day)+'.xlsx'
     save_and_show_in_excel(file_name, output)
+    Graphiti.graphiti()

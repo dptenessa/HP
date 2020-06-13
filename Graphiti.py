@@ -41,8 +41,8 @@ def graphiti():
             ax3.plot(mrc_a1, handset_a1,marker=11,color="r")
             ax3.scatter(mrc_T, handset_T,marker=10,color="m")
             ax3.set_title("HS prices")
-            ax1.semilogx(FLAT, np.exp(-FLAT / 5.0))
-            ax2.semilogx(FLAT, np.exp(-FLAT / 5.0))
+            #ax1.semilogx(FLAT, np.exp(-FLAT / 5.0))
+            #ax2.semilogx(FLAT, np.exp(-FLAT / 5.0))
             ax1.legend(['MRC A1','MRC T'])
             ax2.legend(['HS price A1', 'HS price T'])
             ax3.legend(['HS price A1', 'HS price T'])
@@ -65,4 +65,4 @@ def graphiti():
         print("Ready!")
         os.startfile(pdf_file, operation='open')
 
-graphiti()
+#graphiti()
