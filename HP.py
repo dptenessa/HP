@@ -221,6 +221,9 @@ def refresh_A1():
             element = driver.find_element_by_id(tariff_id)  # TariffSiebel_1-5VHSYZ70")
             driver.execute_script("$(arguments[0]).click();", element)
             time.sleep(1)
+            for times in range(15):
+                driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                time.sleep(1)
             soup = BeautifulSoup(driver.page_source, "lxml")
             all_divs = soup.findAll("div", "Product")
             for item in all_divs:
@@ -641,18 +644,18 @@ def recommend_prices_for_PRP(df):
                                             'Weeknum': Weeknum}, ignore_index=True)
     return df_to_return
 
-def save_history(additional_data,year,week):
+
+def save_history(additional_data, year, week):
     with open('datetracker.pkl', 'rb') as f:
         year_logged, week_logged = pickle.load(f)
-    if week_logged != week and year_logged != year:
+    if week_logged != week or year_logged != year:
         history = pd.read_excel('History.xlsx')
-        full_log = pd.concat([history,additional_data])
+        full_log = pd.concat([history, additional_data])
         full_log.to_excel("History.xlsx", sheet_name='All', index=False)
         with open('datetracker.pkl', 'wb') as f:
-            pickle.dump([year,week], f)
+            pickle.dump([year, week], f)
     else:
         print("Data already logged in history")
-
 
 
 def Rogue_two_output():
@@ -711,8 +714,10 @@ def Rogue_two_output():
 
 if __name__ == '__main__':
     output = Rogue_two_output()
+    output = output.astype(
+        {"PRP/Mkt Price": int, "Final HS price": int, "TCO": int, "Ideal MRC": int, "Ideal HS price": int, "Ideal TCO": int})
     day, month, year, Weeknum = get_date()
-    save_history(output,year,Weeknum)
+    save_history(output, year, Weeknum)
     file_name = 'Recommended prices.xlsx'  # _'+str(year)+str(month)+str(day)+'.xlsx'
     save_and_show_in_excel(file_name, output)
     Graphiti.graphiti()
